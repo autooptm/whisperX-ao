@@ -38,6 +38,16 @@ def load_audio(file: str, sr: int = SAMPLE_RATE) -> np.ndarray:
     -------
     A NumPy array containing the audio waveform, in float32 dtype.
     """
+    if os.environ.get("WHISPERX_OPT_1", "1") != "0":
+        try:
+            import soundfile as sf
+
+            data, rate = sf.read(file, dtype="int16", always_2d=True)
+            if rate == sr and data.shape[1] == 1:
+                return data[:, 0].astype(np.float32) / 32768.0
+        except Exception:
+            pass  # any surprise at all -> the ffmpeg path below
+
     try:
         # Launches a subprocess to decode audio while down-mixing and resampling as necessary.
         # Requires the ffmpeg CLI to be installed.
@@ -92,6 +102,11 @@ def pad_or_trim(array, length: int = N_SAMPLES, *, axis: int = -1):
 
 
 @lru_cache(maxsize=None)
+def _hann_window(n_fft: int, device, dtype) -> torch.Tensor:
+    return torch.hann_window(n_fft, device=device, dtype=dtype)
+
+
+@lru_cache(maxsize=None)
 def mel_filters(device, n_mels: int) -> torch.Tensor:
     """
     load the mel filterbank matrix for projecting STFT into a Mel spectrogram.
@@ -142,11 +157,14 @@ def log_mel_spectrogram(
             audio = load_audio(audio)
         audio = torch.from_numpy(audio)
 
+    if device is None and os.environ.get("WHISPERX_OPT_2", "1") != "0" \
+            and torch.cuda.is_available() and audio.device.type == "cpu":
+        device = "cuda"
     if device is not None:
         audio = audio.to(device)
     if padding > 0:
         audio = F.pad(audio, (0, padding))
-    window = torch.hann_window(N_FFT).to(audio.device)
+    window = _hann_window(N_FFT, audio.device, audio.dtype)
     stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
     magnitudes = stft[..., :-1].abs() ** 2
 

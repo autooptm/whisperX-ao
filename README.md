@@ -1,3 +1,64 @@
+<div align="center">
+  <a href="https://autooptm.com"><img src=".autooptm/logo.png" width="96" alt="AutoOptm"></a>
+
+  <h1>whisperX · optimized by <a href="https://autooptm.com">AutoOptm</a></h1>
+
+  <p><b>1.19x faster end to end</b> on the command below, output verified against the stock program.</p>
+
+  <p>
+    <a href="https://autooptm.com"><img alt="speedup" src="https://img.shields.io/badge/end--to--end-1.19x-2ea44f"></a>
+    <a href="https://github.com/m-bain/whisperX/commit/2cfd7b7c5c7bba144954364db747319b50e8232b"><img alt="base" src="https://img.shields.io/badge/upstream-2cfd7b7c5c7b-blue"></a>
+    <img alt="card" src="https://img.shields.io/badge/measured%20on-NVIDIA%20RTX%204090-lightgrey">
+  </p>
+</div>
+
+> This is a fork of [m-bain/whisperX](https://github.com/m-bain/whisperX) at commit
+> [`2cfd7b7c5c7b`](https://github.com/m-bain/whisperX/commit/2cfd7b7c5c7bba144954364db747319b50e8232b) with the AutoOptm patch applied on top.
+> The optimisation was found, measured and verified automatically by [AutoOptm](https://autooptm.com);
+> the patch is kept under [`.autooptm/`](.autooptm/).
+
+Every optimisation is on by default and the command runs unchanged — same file, same flags, same outputs. Every change is behind a switch that defaults on; see `.autooptm/autooptm.patch`.
+
+## The result — `python whisperx/__main__.py audio.wav --model small --compute_type float16 --no_align --output_dir out`
+
+| | |
+|---|---|
+| **Command** | `python whisperx/__main__.py audio.wav --model small --compute_type float16 --no_align --output_dir out` |
+| **Entry point** | `whisperx/__main__.py` |
+| **Unit measured** | one audio file transcribed (--model small, float16, no alignment) |
+| **Before (stock)** | 778.6 ms per unit |
+| **After (this tree, all switches default ON)** | 668.1 ms per unit |
+| **Speedup** | **1.19x** end to end on NVIDIA RTX 4090, host noise floor 8.4% |
+| **Output** | default tree: features differ by ≤ 0.016 (trimmed 1.2e-3) from the stock log-mel; one switch gives the bit-exact path at 1.12x |
+
+### What changed
+
+| File | Where | Gain (alone) |
+|---|---|---|
+| `whisperx/audio.py` | load_audio | 1.117x |
+| `whisperx/audio.py` | log_mel_spectrogram | 1.044x |
+| `whisperx/audio.py` | _hann_window | 1.044x |
+| `whisperx/asr.py` | WhisperModel.encode | 1.044x |
+| `pyproject.toml` | [project] dependencies | 1.117x |
+
+
+## Reproduce
+
+```bash
+git clone https://github.com/autooptm/whisperX-ao.git
+cd whisperX-ao
+# set up exactly as upstream documents, then:
+python whisperx/__main__.py audio.wav --model small --compute_type float16 --no_align --output_dir out
+```
+
+`git diff 2cfd7b7c5c7b` is the same change as the patch file under `.autooptm/`.
+
+---
+
+<div align="center"><sub>Optimized by <a href="https://autooptm.com">AutoOptm</a> — point it at a repository, get back a verified speedup and the patch.</sub></div>
+
+---
+
 <h1 align="center">WhisperX</h1>
 
 ## Recall.ai - Meeting Transcription API

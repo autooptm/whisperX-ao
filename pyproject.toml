@@ -16,6 +16,8 @@ dependencies = [
     "omegaconf>=2.3.0",
     "pandas>=2.2.3",
     "pyannote-audio>=4.0.0",
+    "soundfile>=0.12.1",
+
     "huggingface-hub>=0.28.1",
     "torch~=2.8.0",
     "torchaudio~=2.8.0",

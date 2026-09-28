@@ -1,0 +1,79 @@
+diff --git a/pyproject.toml b/pyproject.toml
+index 8b7d28a..8a85f57 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -16,6 +16,8 @@ dependencies = [
+     "omegaconf>=2.3.0",
+     "pandas>=2.2.3",
+     "pyannote-audio>=4.0.0",
++    "soundfile>=0.12.1",
++
+     "huggingface-hub>=0.28.1",
+     "torch~=2.8.0",
+     "torchaudio~=2.8.0",
+diff --git a/whisperx/asr.py b/whisperx/asr.py
+index 4011486..89c5c70 100644
+--- a/whisperx/asr.py
++++ b/whisperx/asr.py
+@@ -96,6 +96,12 @@ class WhisperModel(faster_whisper.WhisperModel):
+         # When the model is running on multiple GPUs, the encoder output should be moved
+         # to the CPU since we don't know which GPU will handle the next job.
+         to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
++        if torch.is_tensor(features) and features.is_cuda:
++            if features.dim() == 2:
++                features = features.unsqueeze(0)
++            return self.model.encode(
++                ctranslate2.StorageView.from_array(features.contiguous()), to_cpu=to_cpu
++            )
+         # unsqueeze if batch size = 1
+         if len(features.shape) == 2:
+             features = np.expand_dims(features, 0)
+diff --git a/whisperx/audio.py b/whisperx/audio.py
+index 63a53ca..b0530df 100644
+--- a/whisperx/audio.py
++++ b/whisperx/audio.py
+@@ -38,6 +38,16 @@ def load_audio(file: str, sr: int = SAMPLE_RATE) -> np.ndarray:
+     -------
+     A NumPy array containing the audio waveform, in float32 dtype.
+     """
++    if os.environ.get("WHISPERX_OPT_1", "1") != "0":
++        try:
++            import soundfile as sf
++
++            data, rate = sf.read(file, dtype="int16", always_2d=True)
++            if rate == sr and data.shape[1] == 1:
++                return data[:, 0].astype(np.float32) / 32768.0
++        except Exception:
++            pass  # any surprise at all -> the ffmpeg path below
++
+     try:
+         # Launches a subprocess to decode audio while down-mixing and resampling as necessary.
+         # Requires the ffmpeg CLI to be installed.
+@@ -91,6 +101,11 @@ def pad_or_trim(array, length: int = N_SAMPLES, *, axis: int = -1):
+     return array
+ 
+ 
++@lru_cache(maxsize=None)
++def _hann_window(n_fft: int, device, dtype) -> torch.Tensor:
++    return torch.hann_window(n_fft, device=device, dtype=dtype)
++
++
+ @lru_cache(maxsize=None)
+ def mel_filters(device, n_mels: int) -> torch.Tensor:
+     """
+@@ -142,11 +157,14 @@ def log_mel_spectrogram(
+             audio = load_audio(audio)
+         audio = torch.from_numpy(audio)
+ 
++    if device is None and os.environ.get("WHISPERX_OPT_2", "1") != "0" \
++            and torch.cuda.is_available() and audio.device.type == "cpu":
++        device = "cuda"
+     if device is not None:
+         audio = audio.to(device)
+     if padding > 0:
+         audio = F.pad(audio, (0, padding))
+-    window = torch.hann_window(N_FFT).to(audio.device)
++    window = _hann_window(N_FFT, audio.device, audio.dtype)
+     stft = torch.stft(audio, N_FFT, HOP_LENGTH, window=window, return_complex=True)
+     magnitudes = stft[..., :-1].abs() ** 2
+ 

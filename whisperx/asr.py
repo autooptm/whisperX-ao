@@ -96,6 +96,12 @@ class WhisperModel(faster_whisper.WhisperModel):
         # When the model is running on multiple GPUs, the encoder output should be moved
         # to the CPU since we don't know which GPU will handle the next job.
         to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
+        if torch.is_tensor(features) and features.is_cuda:
+            if features.dim() == 2:
+                features = features.unsqueeze(0)
+            return self.model.encode(
+                ctranslate2.StorageView.from_array(features.contiguous()), to_cpu=to_cpu
+            )
         # unsqueeze if batch size = 1
         if len(features.shape) == 2:
             features = np.expand_dims(features, 0)
